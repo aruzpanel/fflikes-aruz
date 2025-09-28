@@ -72,7 +72,7 @@ if __name__ == "__main__":
     g = Github(gh_token)
 
     # repo nomi
-    repo = g.get_repo("makhsudjaan/fflikesforallserver")
+    repo = g.get_repo("makhsudjaan/fflikes-aruz")
 
     # bir nechta regionni ishlash
     regions = ["ind", "sg"]   # bu yerga kerakli regionlarni qo‘shib borasiz
