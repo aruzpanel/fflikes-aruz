@@ -1,8 +1,8 @@
-name: Update Tokens Every 8 Hours
+name: Update Tokens Every 5 Hours
 
 on:
   schedule:
-    - cron: '0 */8 * * *'  # Har 3 soatda
+    - cron: '0 */5 * * *'  # Har 5 soatda
   workflow_dispatch:
 
 jobs:
