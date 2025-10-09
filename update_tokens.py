@@ -4,7 +4,7 @@ import requests
 from github import Github
 
 def generate_token(uid, password):
-    url = f"https://jwt-converter-black.vercel.app/token?uid={uid}&password={password}"
+    url = f"https://jwt-aruz.vercel.app/token?uid={uid}&password={password}"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
