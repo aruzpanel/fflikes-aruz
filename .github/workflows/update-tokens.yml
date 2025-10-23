@@ -1,4 +1,4 @@
-name: Update Tokens Every 8 Hours
+name: Update Tokens Every 5 Hours
 
 on:
   schedule:
