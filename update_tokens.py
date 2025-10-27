@@ -50,29 +50,32 @@ def process_region(region, repo):
             else:
                 print(f"[x] {result['uid']} ❌ {result.get('error')}")
 
-    if not results:
-        print(f"[!] No tokens generated for {region}")
+    # 🔹 Faqat muvaffaqiyatli tokenlarni ajratish
+    successful_results = [r for r in results if "token" in r]
+
+    if not successful_results:
+        print(f"[!] No successful tokens generated for {region}")
         return
 
-    # 🔹 GitHub faylni yangilash
+    # 🔹 GitHub faylni yangilash (faqat successful tokenlar)
     try:
-        output_content = json.dumps(results, indent=2)
+        output_content = json.dumps(successful_results, indent=2)
         try:
             existing = repo.get_contents(output_file)
             repo.update_file(
                 output_file,
-                f"🔄 Update tokens for {region}",
+                f"🔄 Update successful tokens for {region}",
                 output_content,
                 existing.sha
             )
-            print(f"[✔] Updated {output_file} on GitHub")
+            print(f"[✔] Updated {output_file} with successful tokens")
         except:
             repo.create_file(
                 output_file,
-                f"🆕 Add tokens for {region}",
+                f"🆕 Add successful tokens for {region}",
                 output_content
             )
-            print(f"[✔] Created {output_file} on GitHub")
+            print(f"[✔] Created {output_file} with successful tokens")
     except Exception as e:
         print(f"[!] Failed to write {output_file}: {e}")
 
