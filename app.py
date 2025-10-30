@@ -1,4 +1,3 @@
-# app.py  (ASL KODINGNING YANGILANGAN VAQTI)
 from flask import Flask, request, jsonify
 import asyncio
 import re
@@ -16,20 +15,14 @@ from google.protobuf.message import DecodeError
 import os
 from datetime import datetime, timedelta
 import pytz
-import logging
 
 app = Flask(__name__)
-app.logger.setLevel(logging.INFO)
-
 API_KEYS_FILE = '/tmp/api_keys.json'
 VALID_REGIONS = [
-    "IND", "BR", "US", "SAC", "NA", "BD", "CIS", "PK", "SG", "RU", "PH", "TH", "MY", "ID", "LA", "KH", "VN", "TW"
+    "IND", "BR", "US", "SAC", "NA", "BD", "CIS", "Pk", "SG", "RU", "PH", "TH", "MY", "ID", "LA", "KH", "VN", "TW"
 ]
 
-# ---------- Globals ----------
-request_counter = 0  # global chaqiruv hisoblagichi (har /aruzlike chaqiruvda oshadi)
 
-# ---------- API keys helpers ----------
 def load_api_keys():
     if not os.path.exists(API_KEYS_FILE):
         with open(API_KEYS_FILE, 'w') as f:
@@ -47,7 +40,7 @@ def format_time_remaining(delta):
     minutes, seconds = divmod(rem, 60)
     return f"{days}d {hours}h {minutes}m {seconds}s"
 
-# ---------- Endpoints to manage API keys (unchanged) ----------
+
 @app.route('/createapikey', methods=['GET'])
 def create_apikey():
     name = request.args.get('name')
@@ -154,6 +147,7 @@ def update_daily_limit():
         'Developed By': 'Aruz'
     })
 
+
 @app.route('/resetremaining', methods=['GET'])
 def reset_remaining():
     api_key = request.args.get('api_key')
@@ -185,7 +179,7 @@ def reset_remaining():
         'Developed By': 'Aruz'
     })
 
-# ---------- Token loading (ASL) ----------
+
 def load_tokens(region):
     try:
         if region == "IND":
@@ -207,7 +201,6 @@ def load_tokens(region):
         app.logger.error(f"Error loading tokens for region {region}: {e}")
         return None
 
-# ---------- Encryption (ASL) ----------
 def encrypt_message(plaintext):
     try:
         key = b'Yg&tc%DEuh6%Zc^8'
@@ -220,7 +213,6 @@ def encrypt_message(plaintext):
         app.logger.error(f"Error encrypting message: {e}")
         return None
 
-# ---------- Protobuf creators (ASL) ----------
 def create_protobuf_message(user_id, region):
     try:
         message = like_pb2.like()
@@ -230,6 +222,59 @@ def create_protobuf_message(user_id, region):
     except Exception as e:
         app.logger.error(f"Error creating protobuf message: {e}")
         return None
+
+async def send_request(encrypted_uid, token, url):
+    try:
+        edata = bytes.fromhex(encrypted_uid)
+        headers = {
+            'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 9; ASUS_Z01QD Build/PI)",
+            'Connection': "Keep-Alive",
+            'Accept-Encoding': "gzip",
+            'Authorization': f"Bearer {token}",
+            'Content-Type': "application/x-wingsoffire-form-urlencoded",
+            'Expect': "100-continue",
+            'X-Unity-Version': "2018.4.11f1",
+            'X-GA': "v1 1",
+            'ReleaseVersion': "OB50"
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=edata, headers=headers) as response:
+                if response.status == 200:
+                    return {"success": True, "data": await response.text()}
+                elif response.status == 403:
+                    return {"success": False, "error": "Forbidden: Invalid or expired token"}
+                elif response.status == 404:
+                    return {"success": False, "error": "Not Found: Resource unavailable"}
+                elif response.status == 429:
+                    return {"success": False, "error": "Too Many Requests: Rate limit exceeded"}
+                else:
+                    return {"success": False, "error": f"Request failed with status code {response.status}"}
+    except Exception as e:
+        app.logger.error(f"Exception in send_request: {e}")
+        return {"success": False, "error": "Internal server error during request"}
+
+async def send_multiple_requests(uid, region, url):
+    try:
+        protobuf_message = create_protobuf_message(uid, region)
+        if protobuf_message is None:
+            return {"success": False, "error": "Failed to create protobuf message"}
+        encrypted_uid = encrypt_message(protobuf_message)
+        if encrypted_uid is None:
+            return {"success": False, "error": "Encryption failed"}
+        tasks = []
+        tokens = load_tokens(region)
+        if tokens is None:
+            return {"success": False, "error": "Failed to load tokens for region"}
+        for i in range(100):
+            token = tokens[i % len(tokens)]["token"]
+            tasks.append(send_request(encrypted_uid, token, url))
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        success_count = sum(1 for r in results if isinstance(r, dict) and r.get("success", False))
+        failure_count = len(results) - success_count
+        return {"success_count": success_count, "failure_count": failure_count}
+    except Exception as e:
+        app.logger.error(f"Exception in send_multiple_requests: {e}")
+        return {"success": False, "error": "Internal server error in sending multiple requests"}
 
 def create_protobuf(uid):
     try:
@@ -248,93 +293,6 @@ def enc(uid):
     encrypted_uid = encrypt_message(protobuf_data)
     return encrypted_uid
 
-# ---------- HTTP request helpers (ASL) ----------
-async def send_request(encrypted_uid, token, url):
-    try:
-        edata = bytes.fromhex(encrypted_uid)
-        headers = {
-            'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 9; ASUS_Z01QD Build/PI)",
-            'Connection': "Keep-Alive",
-            'Accept-Encoding': "gzip",
-            'Authorization': f"Bearer {token}",
-            'Content-Type': "application/x-wingsoffire-form-urlencoded",
-            'Expect': "100-continue",
-            'X-Unity-Version': "2018.4.11f1",
-            'X-GA': "v1 1",
-            'ReleaseVersion': "OB49"
-        }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=edata, headers=headers) as response:
-                if response.status == 200:
-                    return {"success": True, "data": await response.text()}
-                elif response.status == 403:
-                    return {"success": False, "error": "Forbidden: Invalid or expired token"}
-                elif response.status == 404:
-                    return {"success": False, "error": "Not Found: Resource unavailable"}
-                elif response.status == 429:
-                    return {"success": False, "error": "Too Many Requests: Rate limit exceeded"}
-                else:
-                    return {"success": False, "error": f"Request failed with status code {response.status}"}
-    except Exception as e:
-        app.logger.error(f"Exception in send_request: {e}")
-        return {"success": False, "error": "Internal server error during request"}
-
-# ---------- UPDATED: send_multiple_requests with token-block logic ----------
-async def send_multiple_requests(uid, region, url):
-    global request_counter
-    request_counter += 1  # har /aruzlike chaqiruvida oshadi
-
-    try:
-        protobuf_message = create_protobuf_message(uid, region)
-        if protobuf_message is None:
-            return {"success": False, "error": "Failed to create protobuf message"}
-        encrypted_uid = encrypt_message(protobuf_message)
-        if encrypted_uid is None:
-            return {"success": False, "error": "Encryption failed"}
-
-        tokens = load_tokens(region)
-        if tokens is None:
-            return {"success": False, "error": "Failed to load tokens for region"}
-
-        # --- Token blokini tanlash: har 28 chaqiruvdan keyin keyingi 100 ta token ---
-        block_size = 100
-        block_index = (request_counter - 1) // 28
-        start = block_index * block_size
-        end = start + block_size
-
-        # agar start tokenlar sonidan oshib ketsa -> boshidan qaytish
-        if start >= len(tokens):
-            start = 0
-            end = block_size if len(tokens) >= block_size else len(tokens)
-
-        # selected_tokens — blok ichidagi tokenlar
-        selected_tokens = tokens[start:end]
-
-        # agar tanlangan tokenlar bo'sh bo'lsa — xatolik
-        if not selected_tokens:
-            return {"success": False, "error": "No tokens available in selected block for region"}
-
-        tasks = []
-        for token_data in selected_tokens:
-            token = token_data.get("token")
-            tasks.append(send_request(encrypted_uid, token, url))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        success_count = sum(1 for r in results if isinstance(r, dict) and r.get("success", False))
-        failure_count = len(results) - success_count
-
-        return {
-            "success_count": success_count,
-            "failure_count": failure_count,
-            "block_index": block_index,
-            "tokens_used": f"{start}-{min(end - 1, len(tokens)-1)}",
-            "call_number": request_counter
-        }
-    except Exception as e:
-        app.logger.error(f"Exception in send_multiple_requests: {e}")
-        return {"success": False, "error": "Internal server error in sending multiple requests"}
-
-# ---------- ASL: make_request and decode_protobuf (unchanged) ----------
 def make_request(encrypt, region, token):
     try:
         if region == "IND":
@@ -356,7 +314,7 @@ def make_request(encrypt, region, token):
             'Expect': "100-continue",
             'X-Unity-Version': "2018.4.11f1",
             'X-GA': "v1 1",
-            'ReleaseVersion': "OB49"
+            'ReleaseVersion': "OB50"
         }
         response = requests.post(url, data=edata, headers=headers, verify=False)
         
@@ -391,13 +349,14 @@ def decode_protobuf(binary):
         app.logger.error(f"Unexpected error during protobuf decoding: {e}")
         return None
 
-# ---------- ASL: /aruzlike endpoint (kechagi koding bilan mos) ----------
+
 @app.route('/aruzlike', methods=['GET'])
 def handle_requests():
     api_key = request.args.get('api_key')
     uid = request.args.get("uid")
     region = request.args.get("region", "").upper()
 
+   
     if not api_key:
         return jsonify({"error": "API key is required", "Developed By": "Aruz"}), 401
 
@@ -410,6 +369,7 @@ def handle_requests():
     current_time = datetime.now(bd_time)
     expires_at = datetime.fromisoformat(key_data['expires_at']).astimezone(bd_time)
     
+    
     if current_time > expires_at:
         return jsonify({
             "error": "API key expired",
@@ -417,11 +377,13 @@ def handle_requests():
             "Developed By": "Aruz"
         }), 403
 
+    
     if current_time.date() > datetime.fromisoformat(key_data['last_reset']).date():
         key_data['remaining'] = key_data['daily_limit']
         key_data['last_reset'] = current_time.date().isoformat()
         save_api_keys(keys)
 
+    
     if key_data['remaining'] <= 0:
         next_reset = (current_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         time_remaining = next_reset - current_time
@@ -432,6 +394,7 @@ def handle_requests():
             "Developed By": "Aruz"
         }), 429
 
+    
     if not re.match(r'^\d{8,11}$', uid):
         return jsonify({
             "error": "Invalid UID format",
@@ -440,6 +403,7 @@ def handle_requests():
             "Developed By": "Aruz"
         }), 400
 
+    
     if region not in VALID_REGIONS:
         return jsonify({
             "error": "Invalid region",
@@ -459,6 +423,7 @@ def handle_requests():
             if encrypted_uid is None:
                 return {"success": False, "error": "Encryption of UID failed"}, 500
 
+           
             before_result = make_request(encrypted_uid, region, token)
             if not before_result["success"]:
                 return {"success": False, "error": before_result["error"]}, 500
@@ -472,6 +437,7 @@ def handle_requests():
             except Exception:
                 before_like = 0
 
+            
             if region == "IND":
                 url = "https://client.ind.freefiremobile.com/LikeProfile"
             elif region in {"BR", "US", "SAC", "NA"}:
@@ -479,11 +445,12 @@ def handle_requests():
             else:
                 url = "https://clientbp.ggblueshark.com/LikeProfile"
 
-            # --- Run the updated send_multiple_requests (token-block logic) ---
+            
             send_result = asyncio.run(send_multiple_requests(uid, region, url))
             if not isinstance(send_result, dict) or "success_count" not in send_result:
                 return {"success": False, "error": send_result.get("error", "Failed to send like requests")}, 500
 
+            
             after_result = make_request(encrypted_uid, region, token)
             if not after_result["success"]:
                 return {"success": False, "error": after_result["error"]}, 500
@@ -533,6 +500,7 @@ def handle_requests():
 
         result, status_code = process_request()
         
+        
         if result["success"] and result["data"].get('status') == 1:
             key_data['remaining'] -= 1
             save_api_keys(keys)
@@ -545,7 +513,6 @@ def handle_requests():
         app.logger.error(f"Error processing request: {e}")
         return jsonify({"error": "Internal server error", "Developed By": "Aruz"}), 500
 
-# ---------- ASL: public_aruzlike (unchanged) ----------
 @app.route('/public_aruzlike', methods=['GET'])
 def public_aruzlike():
     uid = request.args.get("uid")
@@ -648,46 +615,5 @@ def public_aruzlike():
         app.logger.error(f"Error processing request: {e}")
         return jsonify({"error": "Internal server error", "Developed By": "Aruz"}), 500
 
-# ---------- NEW: tokenstatus endpoint (diagnostic) ----------
-@app.route('/tokenstatus', methods=['GET'])
-def token_status():
-    """
-    /tokenstatus?region=IND
-    Returns current request_counter and which token block would be used now for the region.
-    """
-    region = request.args.get('region', '').upper()
-    global request_counter
-
-    if not region:
-        return jsonify({"error": "region parameter is required", "valid_regions": VALID_REGIONS}), 400
-
-    tokens = load_tokens(region)
-    if tokens is None:
-        return jsonify({"error": f"No tokens for region {region} or region unsupported"}), 400
-
-    block_size = 100
-    # compute block index that will be used for the NEXT call (because request_counter increases on call)
-    next_call_num = request_counter + 1
-    block_index = (next_call_num - 1) // 28
-    start = block_index * block_size
-    end = start + block_size
-    if start >= len(tokens):
-        start = 0
-        end = block_size if len(tokens) >= block_size else len(tokens)
-
-    return jsonify({
-        "request_counter": request_counter,
-        "next_call_number": next_call_num,
-        "block_index_for_next_call": block_index,
-        "tokens_range_for_next_call": f"{start}-{min(end - 1, len(tokens)-1)}",
-        "total_tokens_available": len(tokens),
-        "Developed By": "Aruz"
-    }), 200
-
 if __name__ == '__main__':
-    # NOTE: use_reloader=False to avoid double increments of request_counter on dev reload
     app.run(threaded=True, use_reloader=False)
-
-
-
-
