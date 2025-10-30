@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from github import Github
+from concurrent.futures import ThreadPoolExecutor
 
 def generate_token(uid, password):
     url = f"https://jwt-aruz.vercel.app/token?uid={uid}&password={password}"
@@ -31,15 +32,24 @@ def process_region(region, repo):
         return
 
     tokens = []
-    for entry in input_data:
-        uid = entry.get("uid")
-        password = entry.get("password")
-        if not uid or not password:
-            print(f"[!] Skipping entry due to missing UID or password: {entry}")
-            continue
-        token = generate_token(uid, password)
-        if token:
-            tokens.append({"uid": uid, "token": token})
+
+    # Use ThreadPoolExecutor to process token generation in parallel
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for entry in input_data:
+            uid = entry.get("uid")
+            password = entry.get("password")
+            if not uid or not password:
+                print(f"[!] Skipping entry due to missing UID or password: {entry}")
+                continue
+            # Submit the token generation task to the thread pool
+            futures.append(executor.submit(generate_token, uid, password))
+
+        # Collect the results as they finish
+        for future in futures:
+            token = future.result()
+            if token:
+                tokens.append({"uid": future.args[0], "token": token})
 
     if not tokens:
         print(f"[!] No tokens generated for {region}")
@@ -47,6 +57,7 @@ def process_region(region, repo):
 
     try:
         output_content = json.dumps(tokens, indent=2)
+
         try:
             existing_file = repo.get_contents(output_file)
             repo.update_file(output_file, f"Update tokens for {region}", output_content, existing_file.sha)
@@ -66,9 +77,9 @@ def main():
         g = Github(github_token)
         repo = g.get_repo(repository_name)
 
-        for region in ["bd", "ind", "sg"]:
-            print(f"\n[+] Processing region: {region.upper()}")
-            process_region(region, repo)
+        # Use ThreadPoolExecutor for region processing in parallel
+        with ThreadPoolExecutor() as executor:
+            executor.map(lambda region: process_region(region, repo), ["bd", "ind", "sg"])
 
     except Exception as e:
         print(f"[!] Workflow failed: {e}")
