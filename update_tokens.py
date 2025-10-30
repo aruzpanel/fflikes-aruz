@@ -9,10 +9,12 @@ def generate_token(uid, password):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        if isinstance(data, list) and data and "token" in data[0]:
-            return data[0]["token"]
+
+        # Ensure the response contains the 'access_token' field
+        if "access_token" in data:
+            return data["access_token"]
         else:
-            raise ValueError("Unexpected API response format")
+            raise ValueError("Unexpected API response format: 'access_token' not found")
     except Exception as e:
         print(f"[!] Token generation failed for UID {uid}: {e}")
         return None
