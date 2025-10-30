@@ -5,7 +5,7 @@ import requests
 from github import Github
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-API_URL = "https://jwt-aruz.vercel.app/token"
+API_URL = "https://jwt-v1.vercel.app/token"
 MAX_WORKERS = 5       # Bir vaqtning o‘zida maksimal 5 so‘rov
 MAX_RETRIES = 3       # Har bir UID uchun 3 marta qayta urinish
 
