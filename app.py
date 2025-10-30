@@ -261,7 +261,7 @@ async def send_request(encrypted_uid, token, url):
             'Expect': "100-continue",
             'X-Unity-Version': "2018.4.11f1",
             'X-GA': "v1 1",
-            'ReleaseVersion': "OB51"
+            'ReleaseVersion': "OB49"
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=edata, headers=headers) as response:
@@ -356,7 +356,7 @@ def make_request(encrypt, region, token):
             'Expect': "100-continue",
             'X-Unity-Version': "2018.4.11f1",
             'X-GA': "v1 1",
-            'ReleaseVersion': "OB51"
+            'ReleaseVersion': "OB49"
         }
         response = requests.post(url, data=edata, headers=headers, verify=False)
         
@@ -687,6 +687,7 @@ def token_status():
 if __name__ == '__main__':
     # NOTE: use_reloader=False to avoid double increments of request_counter on dev reload
     app.run(threaded=True, use_reloader=False)
+
 
 
 
