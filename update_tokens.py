@@ -1,34 +1,21 @@
 import os
 import json
-import time
 import requests
 from github import Github
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-API_URL = "https://jwt-aruz.vercel.app/token"
-MAX_WORKERS = 5       # Bir vaqtning o‘zida maksimal 5 so‘rov
-MAX_RETRIES = 3       # Har bir UID uchun 3 marta qayta urinish
 
 def generate_token(uid, password):
-    """UID uchun token olish, 3 marta qayta urinish bilan"""
-    url = f"{API_URL}?uid={uid}&password={password}"
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-
-            token = data.get("token") or data.get("BearerAuth")
-            if token:
-                return {"uid": data.get("uid", uid), "token": token}
-
-            raise ValueError("Invalid API response format")
-
-        except Exception as e:
-            print(f"[{attempt}/{MAX_RETRIES}] ⚠️ UID {uid}: {e}")
-            time.sleep(3)
-
-    return {"uid": uid, "error": "Failed after retries"}
+    url = f"https://jwt-aruz.vercel.app/token?uid={uid}&password={password}"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list) and data and "token" in data[0]:
+            return data[0]["token"]
+        else:
+            raise ValueError("Unexpected API response format")
+    except Exception as e:
+        print(f"[!] Token generation failed for UID {uid}: {e}")
+        return None
 
 def process_region(region, repo):
     input_file = f"input_{region}.json"
@@ -41,61 +28,48 @@ def process_region(region, repo):
         print(f"[!] Could not read {input_file}: {e}")
         return
 
-    print(f"[*] Processing {len(input_data)} accounts for region {region}...")
+    tokens = []
+    for entry in input_data:
+        uid = entry.get("uid")
+        password = entry.get("password")
+        if not uid or not password:
+            print(f"[!] Skipping entry due to missing UID or password: {entry}")
+            continue
+        token = generate_token(uid, password)
+        if token:
+            tokens.append({"uid": uid, "token": token})
 
-    results = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {
-            executor.submit(generate_token, item["uid"], item["password"]): item["uid"]
-            for item in input_data if item.get("uid") and item.get("password")
-        }
-
-        for future in as_completed(futures):
-            result = future.result()
-            results.append(result)
-            if "token" in result:
-                print(f"[+] {result['uid']} ✅ Token olindi")
-            else:
-                print(f"[x] {result['uid']} ❌ {result['error']}")
-            time.sleep(0.3)  # So‘rovlar orasida ozgina pauza
-
-    if not results:
+    if not tokens:
         print(f"[!] No tokens generated for {region}")
         return
 
-    # JSONni tozalash (error yozuvlarini chiqarib tashlash)
-    cleaned_results = [r for r in results if "token" in r]
-
-    output_content = json.dumps(cleaned_results, indent=2)
     try:
+        output_content = json.dumps(tokens, indent=2)
         try:
-            existing = repo.get_contents(output_file)
-            repo.update_file(
-                output_file,
-                f"🔄 Auto update tokens for {region}",
-                output_content,
-                existing.sha
-            )
-            print(f"[✔] Updated {output_file} on GitHub ({len(cleaned_results)} token)")
+            existing_file = repo.get_contents(output_file)
+            repo.update_file(output_file, f"Update tokens for {region}", output_content, existing_file.sha)
         except:
-            repo.create_file(
-                output_file,
-                f"🆕 Add tokens for {region}",
-                output_content
-            )
-            print(f"[✔] Created {output_file} on GitHub")
+            repo.create_file(output_file, f"Create tokens for {region}", output_content)
+        print(f"[✓] Token file saved: {output_file}")
     except Exception as e:
-        print(f"[!] Failed to write {output_file}: {e}")
+        print(f"[!] Error saving {output_file}: {e}")
+
+def main():
+    try:
+        github_token = os.getenv("GITHUB_TOKEN")
+        repository_name = os.getenv("GITHUB_REPOSITORY")
+        if not github_token or not repository_name:
+            raise ValueError("Missing GITHUB_TOKEN or GITHUB_REPOSITORY environment variable.")
+
+        g = Github(github_token)
+        repo = g.get_repo(repository_name)
+
+        for region in ["bd", "ind", "sg"]:
+            print(f"\n[+] Processing region: {region.upper()}")
+            process_region(region, repo)
+
+    except Exception as e:
+        print(f"[!] Workflow failed: {e}")
 
 if __name__ == "__main__":
-    gh_token = os.getenv("GITHUB_TOKEN")
-    if not gh_token:
-        print("❌ GITHUB_TOKEN topilmadi (env o‘zgaruvchi kerak)")
-        exit(1)
-
-    g = Github(gh_token)
-    repo = g.get_repo("aruzpanel/fflikes-aruz")
-
-    regions = ["ind", "sg", "bd"]
-    for region in regions:
-        process_region(region, repo)
+    main()
